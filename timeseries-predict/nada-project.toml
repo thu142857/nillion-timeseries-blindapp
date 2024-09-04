@@ -3,5 +3,5 @@ version = "0.1.0"
 authors = ["uth142857"]
 
 [[programs]]
-path = "src/main.py"
+path = "src/coin_predict.py"
 prime_size = 128
