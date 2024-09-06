@@ -43,7 +43,6 @@ async def main() -> None:
     party_id = client.party_id
     user_id = client.user_id
 
-    party_names = na_client.parties(2)
     program_name = "coin_predict"
     program_mir_path = f"target/{program_name}.nada.bin"
 
@@ -85,11 +84,15 @@ async def main() -> None:
         permissions,
     )
 
+    print(f"Stored model secrets with store_id: {model_store_id}")
+
     # Store inputs to perform inference for
     time_horizon = 5
 
-    future_df = loaded_model.make_future_dataframe(periods=time_horizon)
+    future_df = loaded_model.make_future_dataframe(periods=1)
     inference_ds = loaded_model.setup_dataframe(future_df.copy())
+
+    print(f"Using inference data: {future_df}")
 
     my_input = {}
     my_input.update(
@@ -113,9 +116,9 @@ async def main() -> None:
     # Set up the compute bindings for the parties
     compute_bindings = nillion.ProgramBindings(program_id)
 
-    for party_name in party_names:
-        compute_bindings.add_input_party(party_name, party_id)
-    compute_bindings.add_output_party(party_names[-1], party_id)
+    compute_bindings.add_input_party("ModelProvider", party_id)
+    compute_bindings.add_input_party("UserProvider", party_id)
+    compute_bindings.add_output_party("UserProvider", party_id)
 
     print(f"Computing using program {program_id}")
     print(f"Use secret store_id: {model_store_id} {data_store_id}")

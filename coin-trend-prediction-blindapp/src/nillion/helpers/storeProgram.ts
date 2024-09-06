@@ -16,7 +16,7 @@ export async function storeProgram({
 }: StoreProgram): Promise<any> {
   try {
     const programBinary = await transformNadaProgramToUint8Array(
-      `./programs/${programName}.nada.bin`
+      `/programs/${programName}.nada.bin`
     );
 
     const program_id = await nillionClient.store_program(
