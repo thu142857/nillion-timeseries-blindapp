@@ -13,11 +13,11 @@ export interface NillionEnvConfig {
 }
 
 export const config: NillionEnvConfig = {
-  clusterId: process.env.NEXT_PUBLIC_NILLION_CLUSTER_ID || '',
-  bootnodes: [process.env.NEXT_PUBLIC_NILLION_BOOTNODE_WEBSOCKET || ''],
+  clusterId: process.env.REACT_APP_NILLION_CLUSTER_ID || '',
+  bootnodes: [process.env.REACT_APP_NILLION_BOOTNODE_WEBSOCKET || ''],
   chain: {
     endpoint: `${window.location.origin}/nilchain-proxy`, // see webpack.config.js proxy
-    keys: [process.env.NEXT_PUBLIC_NILLION_NILCHAIN_PRIVATE_KEY || ''],
+    keys: [process.env.REACT_APP_NILLION_NILCHAIN_PRIVATE_KEY || ''],
   },
 };
 
