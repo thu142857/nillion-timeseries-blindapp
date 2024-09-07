@@ -86,7 +86,7 @@ const ComputeComponent: React.FC<ComputeProgramProps> = ({
 
       const value = await computeProgram({
         nillionClient,
-        receipt: paymentReceipt,
+        receipt: paymentReceipt as nillion.PaymentReceipt,
         programId,
         storeIds,
         inputParties,

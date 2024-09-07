@@ -14,7 +14,7 @@ import nada_numpy.client as na_client
 import numpy as np
 import pandas as pd
 import py_nillion_client as nillion
-from common import compute, store_program, store_secrets
+from common import compute, store_program, store_secrets, getQuote, uint8arrayToString
 from cosmpy.aerial.client import LedgerClient
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
@@ -23,6 +23,9 @@ from nillion_python_helpers import (create_nillion_client,
                                     create_payments_config)
 from prophet import Prophet
 from py_nillion_client import NodeKey, UserKey
+from random import randint
+
+from nillion_python_helpers import get_quote
 
 from nada_ai.client import ProphetClient
 
@@ -32,6 +35,8 @@ load_dotenv(f"{home}/.config/nillion/nillion-devnet.env")
 app = Flask(__name__)
 
 CORS(app)
+
+savedData = {}
 
 @app.route('/api/store', methods=['POST'])
 async def store():
@@ -115,6 +120,97 @@ async def store():
             return jsonify({'error': f'Failed to load model: {str(e)}'}), 500
     else:
         return jsonify({'error': 'Invalid file type. Only .pkl files are allowed.'}), 400
+
+@app.route('/api/upload-model', methods=['POST'])
+async def uploadModel():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if file and file.filename.endswith('.pkl'):
+        try:
+            # Load file
+            file_stream = io.BytesIO(file.read())
+            loaded_model = joblib.load(file_stream)
+
+            program_id = request.form.get('program_id')
+            cluster_id = request.form.get('cluster_id')
+            user_id = request.form.get('user_id')
+            userkeyBase58 = request.form.get('user_key')
+
+            defaultNodeKeySeed = f"nillion-testnet-seed-{randint(0, 9) + 1}"
+
+            nodekey = NodeKey.from_seed(defaultNodeKeySeed)
+            userkey = UserKey.from_base58(userkeyBase58)
+
+            client = create_nillion_client(userkey, nodekey)
+
+            model_client = ProphetClient(loaded_model)
+            model_secrets = nillion.NadaValues(
+                model_client.export_state_as_secrets("coin_predict_model", na.SecretRational)
+            )
+            permissions = nillion.Permissions.default_for_user(user_id)
+            permissions.add_compute_permissions({user_id: {program_id}})
+
+            operation = nillion.Operation.store_values(model_secrets, ttl_days=1)
+
+            modelQuote = await getQuote(
+                client, operation, cluster_id
+            )
+
+            if user_id not in savedData:
+                savedData[user_id] = {}
+
+            nonceString = uint8arrayToString(modelQuote.nonce)
+
+            savedData[user_id][nonceString] = {
+                'cluster_id': cluster_id,
+                'secrets': model_secrets,
+                'permissions': permissions,
+                'client': client,
+                'quote': modelQuote
+            }
+
+            return jsonify({'message': 'Model upload successfully!', 'nonce': modelQuote.nonce, 'total': modelQuote.cost.total}), 200
+        
+        except Exception as e:
+            return jsonify({'error': f'Failed to load model: {str(e)}'}), 500
+    else:
+        return jsonify({'error': 'Invalid file type. Only .pkl files are allowed.'}), 400
+
+@app.route('/api/store-model', methods=['POST'])
+async def storeModel():
+    data = request.get_json()
+
+    try:
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        txhash = data.get('txhash')
+        user_id = data.get('user_id')
+        nonce = data.get('nonce')
+        nonceString = uint8arrayToString(nonce)
+
+        userData = savedData[user_id][nonceString]
+
+        client = userData['client']
+        permissions = userData['permissions']
+        secrets = userData['secrets']
+        cluster_id = userData['cluster_id']
+        quote = userData['quote']
+
+        receipt = nillion.PaymentReceipt(quote, txhash)
+
+        store_id = await client.store_values(cluster_id, secrets, permissions, receipt)
+
+        return jsonify({'message': 'Model stored successfully!', 'store_id': store_id}), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to store model: {str(e)}'}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=3000)

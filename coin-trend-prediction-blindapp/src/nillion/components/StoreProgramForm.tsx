@@ -115,7 +115,7 @@ const StoreProgram: React.FC<StoreProgramProps> = ({
       setPaymentReceipt(paymentReceipt);
       const program_id = await storeProgram({
         nillionClient,
-        receipt: paymentReceipt,
+        receipt: paymentReceipt as nillion.PaymentReceipt,
         programName: selectedProgram,
       });
 

@@ -127,7 +127,7 @@ const UpdateSecretForm: React.FC<UpdateSecretFormProps> = ({
       const storeId = await updateSecret({
         nillionClient,
         nillionSecrets: quote.secret,
-        updateSecretsReceipt: paymentReceipt,
+        updateSecretsReceipt: paymentReceipt as nillion.PaymentReceipt,
         storeId: secretStoreId,
       });
       const newStoredSecret = {

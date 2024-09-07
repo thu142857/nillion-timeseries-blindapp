@@ -282,3 +282,20 @@ async def compute(
                 print(f"✅ Compute complete for compute_id {compute_event.uuid}")
                 print(f"🖥️  The result is {compute_event.result.value}")
             return compute_event.result.value
+
+
+async def getQuote(
+    client: nillion.NillionClient,
+    operation: nillion.Operation,
+    cluster_id,
+):
+    quote = await client.request_price_quote(cluster_id, operation)
+    return quote
+
+def uint8arrayToString(arr):
+    string = "|".join([str(x) for x in arr])
+    return string
+
+def stringToUint8Array(string):
+    uint8_array = [int(x) for x in string.split("|")]
+    return uint8_array

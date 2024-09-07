@@ -80,7 +80,7 @@ const RetrieveSecret: React.FC<RetrieveSecretProps> = ({
         nillionClient,
         store_id: storeId,
         secret_name: secretName,
-        receipt: paymentReceipt,
+        receipt: paymentReceipt as nillion.PaymentReceipt,
       });
       setRetrievedValue(value.toString());
       setLoadingPayment(false);

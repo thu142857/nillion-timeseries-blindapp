@@ -48,8 +48,9 @@ export async function createNilChainClientAndWalletFromPrivateKey(): Promise<
 export async function payWithWalletFromPrivateKey(
   nilChainClient: SigningStargateClient,
   wallet: DirectSecp256k1Wallet,
-  quoteInfo: any
-): Promise<PaymentReceipt> {
+  quoteInfo: any,
+  onlyTxHashReturn = false
+): Promise<PaymentReceipt | string> {
   const { quote } = quoteInfo;
   const denom = 'unil';
   const [account] = await wallet.getAccounts();
@@ -57,8 +58,8 @@ export async function payWithWalletFromPrivateKey(
 
   const payload: MsgPayFor = {
     fromAddress: from,
-    resource: quote.nonce,
-    amount: [{ denom, amount: quote.cost.total }],
+    resource: quote.nonce as Uint8Array,
+    amount: [{ denom, amount: `${quote.cost.total}` }],
   };
 
   const result = await nilChainClient.signAndBroadcast(
@@ -67,5 +68,9 @@ export async function payWithWalletFromPrivateKey(
     'auto'
   );
 
+  console.log('payment successfully: ', result);
+  if (onlyTxHashReturn) {
+    return result.transactionHash;
+  }
   return new PaymentReceipt(quote, result.transactionHash);
 }

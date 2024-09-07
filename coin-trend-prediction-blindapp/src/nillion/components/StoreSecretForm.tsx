@@ -160,7 +160,7 @@ const SecretForm: React.FC<SecretFormProps> = ({
       const storeId = await storeSecrets({
         nillionClient,
         nillionSecrets: quote.secret,
-        storeSecretsReceipt: paymentReceipt,
+        storeSecretsReceipt: paymentReceipt as nillion.PaymentReceipt,
         ...permissions,
       });
 
