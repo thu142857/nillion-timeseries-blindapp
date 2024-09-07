@@ -53,7 +53,7 @@ const GenerateUserKey: React.FC<GenerateUserKeyProps> = ({
                         defaultValue=""
                         onChange={handleSeedChange}
                     />
-                    <Button className='py-6 max-w-[400px]' type="submit" color="primary">
+                    <Button className='py-6 max-w-[400px]' type="submit" color="primary" isDisabled={seed ? false : true}>
                         Generate userkey
                     </Button>
                 </div>

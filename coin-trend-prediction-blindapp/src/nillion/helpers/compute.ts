@@ -46,13 +46,10 @@ export async function computeProgram({
       receipt
     );
 
-    console.log(compute_result_uuid);
-
     const compute_result =
       await nillionClient.compute_result(compute_result_uuid);
 
-    console.log(compute_result);
-    const result = compute_result[outputName].toString();
+    const result = compute_result;
     return result;
   } catch (error) {
     return error;

@@ -8,7 +8,8 @@ columns = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time',
            'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 
            'Taker Buy Quote Asset Volume', 'Ignore']
 
-datasetPath = '../dataset/ETHUSDT-1h-to-2-9.csv'
+datasetPath = '../dataset/ETHUSDT-1h-to-end6-9.csv'
+model_filename = 'ETH_Predictation_1h_until_end6-9.pkl'
 
 df = pd.read_csv(datasetPath)
 
@@ -22,6 +23,8 @@ df['Close'] = df['Close'].astype(float)
 df = df[['Open Time', 'Close']]
 df.columns = ['ds', 'y']
 
+df = df.sort_values('ds')
+
 print(df.head())
 
 model = Prophet()
@@ -29,6 +32,5 @@ model = Prophet()
 # Train
 model.fit(df)
 
-model_filename = 'ETH_Predictation_1h.pkl'
 joblib.dump(model, model_filename)
 print(f'Model saved to {model_filename}')

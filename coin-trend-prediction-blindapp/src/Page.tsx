@@ -15,6 +15,7 @@ import axios from "axios";
 import { computeProgram } from "./nillion/helpers/compute";
 import { config } from './nillion/helpers/nillion';
 import { PaymentReceipt } from '@nillion/client-web';
+import moment from 'moment';
 
 export default function Home() {
 
@@ -25,19 +26,27 @@ export default function Home() {
     const [partyId, setPartyId] = useState<string | null>(null);
     const [programTempId, setProgramTempId] = useState<string | null>(null);
     const [programId, setProgramId] = useState<string | null>(null);
-    const [loadingQuote, setLoadingQuote] = useState(false);
     const [programQuote, setProgramQuote] = useState<any | null>(null);
-    const [loadingPayment, setLoadingPayment] = useState(false);
-    const [modelTempStoreId, setTempModelStoreId] = useState<string | null>(null);
     const [computeQuote, setComputeQuote] = useState<any | null>(null);
 
+    // model store
+    const [tempModelStoreId, setTempModelStoreId] = useState<string | null>(null);
+    const [modelStoreId, setModelStoreId] = useState<string | null>(null);
     const [uploadModelQuote, setUploadModelQuote] = useState<any | null>(null);
 
+    // trend secret store
+    const [tempDataStoreId, setTempDataStoreId] = useState<string | null>(null);
+    const [dataStoreId, setDataStoreId] = useState<string | null>(null);
     const [trendHours, setTrendHours] = useState<number | null>(null);
     const [trendQuote, setTrendQuote] = useState<any | null>(null);
 
-    const [modelStoreId, setModelStoreId] = useState<string | null>(null);
-    const [dataStoreId, setDataStoreId] = useState<string | null>(null);
+    // loading state
+    const [loadingProgramPayment, setLoadingProgramPayment] = useState(false);
+    const [loadingComputePayment, setLoadingComputePayment] = useState(false);
+    const [loadingSaveModelPayment, setLoadingSaveModelPayment] = useState(false);
+    const [loadingSaveSecretVariablePayment, setLoadingSaveSecretVariablePayment] = useState(false);
+
+    const [trendValues, setTrendValues] = useState<number[] | null>(null);
 
     const programName = 'coin_predict';
 
@@ -67,7 +76,7 @@ export default function Home() {
         formData.append('user_id', userId as string);
         formData.append('user_key', userkey as string);
 
-        toast.success('Storing...');
+        toast.success('Getting quote...');
 
         try {
             const response = await axios.post('http://localhost:3000/api/upload-model', formData, {
@@ -76,7 +85,6 @@ export default function Home() {
                 },
             });
             toast.success('Please confirm to pay to upload your model to Nillion Network.');
-            console.log(response.data);
 
             if (!response.data) 
                 throw new Error('No response data.');
@@ -89,9 +97,6 @@ export default function Home() {
                     nonce: response.data.nonce
                 }
             })
-
-            // setModelStoreId(response.data.model_store_id);
-            // setDataStoreId(response.data.data_store_id);
         } catch (error) {
             console.error(error);
         }
@@ -105,6 +110,7 @@ export default function Home() {
             await createNilChainClientAndWalletFromPrivateKey();
 
         try {
+            setLoadingSaveModelPayment(true);
             const txhash = await payWithWalletFromPrivateKey(
                 nilChainClient,
                 nilChainWallet,
@@ -112,7 +118,7 @@ export default function Home() {
                 true
             );
 
-            toast.success(`Payment successful Txhash: ${txhash}. Please wait for the confirmation.`);
+            toast.success(`Payment successful Txhash: ${txhash}. Please wait for storing your model on Nillion Network.`);
 
             const response = await axios.post('http://localhost:3000/api/store-model', {
                 txhash: txhash as string,
@@ -125,9 +131,13 @@ export default function Home() {
 
             toast.success('Upload your model successfully.');
             setModelStoreId(response.data.store_id);
+            setLoadingSaveModelPayment(false);
+            setUploadModelQuote(null); // reset
         } catch (error: any) {
             console.error(error);
             toast.error(error.message);
+            setLoadingSaveModelPayment(false);
+            setUploadModelQuote(null); // reset
         }
 
     }
@@ -147,28 +157,39 @@ export default function Home() {
     }
 
     const createNewProgram = async () => {
-        setLoadingPayment(true);
+        toast.success('Paying for creating program...');
+
         const [nilChainClient, nilChainWallet] =
             await createNilChainClientAndWalletFromPrivateKey();
 
+        setLoadingProgramPayment(true);
         const paymentReceipt = await payWithWalletFromPrivateKey(
             nilChainClient,
             nilChainWallet,
             programQuote
         );
         
-        const program_id = await storeProgram({
-            nillionClient: client as NillionClient,
-            receipt: paymentReceipt as PaymentReceipt,
-            programName: programName,
-        });
+        try {
+            const program_id = await storeProgram({
+                nillionClient: client as NillionClient,
+                receipt: paymentReceipt as PaymentReceipt,
+                programName: programName,
+            });
 
-        setProgramId(program_id);
-        setLoadingPayment(false);
+            setProgramId(program_id);
+            setProgramQuote(null); // reset
+            toast.success('Program created successfully.');
+            setLoadingProgramPayment(false);
+        } catch (error: any) {
+            console.error(error);
+            toast.error(error.message);
+            setLoadingProgramPayment(false);
+            setProgramQuote(null); // reset
+        }
     }
 
     const getQuoteForm = async () => {
-        setLoadingQuote(true);
+        toast.success('Getting quote for creating program...');
 
         const programBinary = await transformNadaProgramToUint8Array(
             `/programs/${programName}.nada.bin`
@@ -185,9 +206,6 @@ export default function Home() {
             quoteJson: quote.toJSON(),
             operation,
         });
-        
-        toast.success('Quote received successfully.');
-        setLoadingQuote(false);
     }
 
     const handleTrendHoursChange = async (e: any) => {
@@ -198,12 +216,74 @@ export default function Home() {
     const handleTrendSubmit = async (e: any) => {
         e.preventDefault();
 
+        const params = {
+            user_id: userId as string,
+            program_id: programId as string,
+            cluster_id: config.clusterId as string,
+            user_key: userkey as string,
+            hours: trendHours
+        }
+
+        toast.success('Getting quote...');
+
+        try {
+            const response = await axios.post('http://localhost:3000/api/getquote-store-data', params);
+
+            toast.success('Please confirm to pay to store your secret data to Nillion Network.');
+
+            if (!response.data) 
+                throw new Error('No response data.');
+
+            setTrendQuote({
+                quote: {
+                    cost: {
+                        total: response.data.total
+                    },
+                    nonce: response.data.nonce
+                }
+            });
+        } catch (error) {
+            console.error(error);
+        }
+
     }
 
     const confirmPayTrendQuote = async (e: any) => {
         e.preventDefault();
 
+        setLoadingSaveSecretVariablePayment(true);
+        const [nilChainClient, nilChainWallet] =
+            await createNilChainClientAndWalletFromPrivateKey();
 
+        try {
+            const txhash = await payWithWalletFromPrivateKey(
+                nilChainClient,
+                nilChainWallet,
+                trendQuote,
+                true
+            );
+
+            toast.success(`Payment successful Txhash: ${txhash}. Please wait for storing your secret data.`);
+
+            const response = await axios.post('http://localhost:3000/api/store-data', {
+                txhash: txhash as string,
+                user_id: userId,
+                nonce: trendQuote.quote.nonce
+            });
+
+            if (!response.data) 
+                throw new Error('No response data.');
+
+            toast.success('Upload your model successfully.');
+            setDataStoreId(response.data.store_id);
+            setTrendQuote(null); // reset
+            setLoadingSaveSecretVariablePayment(false);
+        } catch (error: any) {
+            console.error(error);
+            toast.error(error.message);
+            setLoadingSaveSecretVariablePayment(false);
+            setTrendQuote(null); // reset
+        }
     }
 
     const compute = async (e: any) => {
@@ -212,7 +292,7 @@ export default function Home() {
         const partyName1 = 'ModelProvider';
         const partyName2 = 'UserProvider';
 
-        setLoadingPayment(true);
+        setLoadingComputePayment(true);
         const [nilChainClient, nilChainWallet] =
             await createNilChainClientAndWalletFromPrivateKey();
 
@@ -222,49 +302,49 @@ export default function Home() {
             computeQuote
         );
 
-        const value = await computeProgram({
-            nillionClient: client as NillionClient,
-            receipt: paymentReceipt as PaymentReceipt,
-            programId: programId as string,
-            storeIds: [modelStoreId as string, dataStoreId as string],
-            inputParties: [
-                // Party0
-                {
-                  partyName: partyName1,
-                  partyId: partyId as string,
-                },
-                // Party1
-                {
-                  partyName: partyName2,
-                  partyId: partyId as string,
-                },
-            ],
-            outputParties: [
-                // Party1
-                {
-                    partyName: partyName2,
-                    partyId: partyId as string,
-                },
-            ],
-            outputName: 'coin_predict_output',
-            additionalComputeValues: new nillion.NadaValues(),
-        });
+        try {
+            const value = await computeProgram({
+                nillionClient: client as NillionClient,
+                receipt: paymentReceipt as PaymentReceipt,
+                programId: programId as string,
+                storeIds: [modelStoreId as string, dataStoreId as string],
+                inputParties: [
+                    // Party0
+                    {
+                      partyName: partyName1,
+                      partyId: partyId as string,
+                    },
+                    // Party1
+                    {
+                      partyName: partyName2,
+                      partyId: partyId as string,
+                    },
+                ],
+                outputParties: [
+                    // Party1
+                    {
+                        partyName: partyName2,
+                        partyId: partyId as string,
+                    },
+                ],
+                outputName: 'coin_predict_output',
+                additionalComputeValues: new nillion.NadaValues(),
+            });
 
-        console.log(value);
-
-        // setComputeResult(value);
-
-        // if (shouldRescale) {
-        //     console.log(value);
-        //     const rescaledResult = parseFloat(value) / Math.pow(2, 32);
-        //     console.log(rescaledResult);
-        //     setComputeResult(rescaledResult);
-        // }
-
-        // if (onComputeProgram) {
-        //     onComputeProgram({ value });
-        // }
-        setLoadingPayment(false);
+            let trends: number[] = [];
+            for (const key of Object.keys(value)) {
+                const rescaledResult = parseFloat(value[key]) / Math.pow(2, 16);
+                trends.push(rescaledResult);
+            }
+            setTrendValues(trends);
+            setComputeQuote(null); // reset
+            setLoadingComputePayment(false);
+        } catch (error: any) {
+            console.error(error);
+            toast.error(error.message);
+            setComputeQuote(null); // reset
+            setLoadingComputePayment(false);
+        }
     }
 
     const handleGetComputeQuoteSubmit = async (e: any) => {
@@ -288,6 +368,26 @@ export default function Home() {
             operation,
         });
     };
+
+    const handleModelStoreIDChange = (e: any) => {
+        e.preventDefault();
+        setTempModelStoreId(e.target.value)
+    }
+
+    const saveModelStoreID = (e: any) => {
+        e.preventDefault();
+        setModelStoreId(tempModelStoreId);
+    }
+
+    const handleTrendStoreIDChange = (e: any) => {
+        e.preventDefault();
+        setTempDataStoreId(e.target.value)
+    }
+
+    const saveTrendStoreID = (e: any) => {
+        e.preventDefault();
+        setDataStoreId(tempDataStoreId);
+    }
 
     return (
         <div className="main flex flex-col min-h-[calc(100vh_-_117px)] w-full items-center">
@@ -318,7 +418,7 @@ export default function Home() {
                                         defaultValue=""
                                         onChange={handleProgramIDChange}
                                     />
-                                    <Button className="py-[28px] px-[80px]" color="primary" type="submit" disabled={programTempId ? false : true}>
+                                    <Button className="py-[28px] px-[80px]" color="primary" type="submit" isDisabled={programTempId ? false : true}>
                                         Save
                                     </Button>
                                 </form>
@@ -329,7 +429,7 @@ export default function Home() {
                                 </Button>
                                 {
                                     programQuote &&
-                                    <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={createNewProgram}>
+                                    <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={createNewProgram} isLoading={loadingProgramPayment}>
                                         Confirm and Store Program
                                     </Button>
                                 }
@@ -344,8 +444,7 @@ export default function Home() {
                     }
                     {
                         userkey && client && programId && 
-                        <>
-                        <div className="form-container flex flex-col gap-y-4 mt-[20px]">
+                        <div className="form-container flex flex-col gap-y-4 mt-[20px] border-t border-t-white pt-[20px]">
                             <label className="text-3xl font-bold">Upload your model:</label>
                             <input type="file" onChange={handleFileChange} accept=".pkl" />
                             <div className="btn-group flex flex-row gap-x-4">
@@ -354,10 +453,25 @@ export default function Home() {
                                 </Button>
                                 {
                                     uploadModelQuote &&
-                                    <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={confirmPayStoreModel}>
+                                    <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={confirmPayStoreModel} isLoading={loadingSaveModelPayment}>
                                         Confirm and Pay
                                     </Button>
                                 }
+                            </div>
+                            <label className="text-3xl font-bold">Input the model store ID:</label>
+                            <div className="btn-group flex flex-row gap-x-4">
+                                <Input
+                                    key={'default'}
+                                    type="text"
+                                    color={'default'}
+                                    label="Model Store ID"
+                                    placeholder="E.g. 5haYyUiTda..."
+                                    defaultValue=""
+                                    onChange={handleModelStoreIDChange}
+                                />
+                                <Button className="py-[28px] px-[40px] max-w-[400px]" color="primary" onClick={saveModelStoreID} isDisabled={tempModelStoreId ? false : true}>
+                                    Save Model Store ID
+                                </Button>
                             </div>
                             {
                                 modelStoreId &&
@@ -366,8 +480,11 @@ export default function Home() {
                                 </div>
                             }
                         </div>
-                        <div className="form-container flex flex-col gap-y-4 mt-[20px]">
-                            <label className="text-3xl font-bold">Trend in Next:</label>
+                    }
+                    {
+                        modelStoreId &&
+                        <div className="form-container flex flex-col gap-y-4 mt-[20px] border-t border-t-white pt-[20px]">
+                            <label className="text-3xl font-bold">Next trend in hour:</label>
                             <Input
                                 key={'default'}
                                 type="text"
@@ -378,15 +495,30 @@ export default function Home() {
                                 onChange={handleTrendHoursChange}
                             />
                             <div className="btn-group flex flex-row gap-x-4">
-                                <Button className="py-[28px] px-[80px]" color="primary" onClick={handleTrendSubmit} isDisabled={trendHours && trendHours > 0 ? false : true}>
+                                <Button className="py-6 px-[80px]" color="primary" onClick={handleTrendSubmit} isDisabled={trendHours && trendHours > 0 ? false : true}>
                                     Store
                                 </Button>
                                 {
                                     trendQuote &&
-                                    <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={confirmPayTrendQuote}>
+                                    <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={confirmPayTrendQuote} isLoading={loadingSaveSecretVariablePayment}>
                                         Confirm and Pay
                                     </Button>
                                 }
+                            </div>
+                            <label className="text-3xl font-bold">Input the trend store ID:</label>
+                            <div className="btn-group flex flex-row gap-x-4">
+                                <Input
+                                    key={'default'}
+                                    type="text"
+                                    color={'default'}
+                                    label="Trend Store ID"
+                                    placeholder="E.g. 5haYyUiTda..."
+                                    defaultValue=""
+                                    onChange={handleTrendStoreIDChange}
+                                />
+                                <Button className="py-[28px] px-[40px] max-w-[400px]" color="primary" onClick={saveTrendStoreID} isDisabled={tempDataStoreId ? false : true}>
+                                    Save Trend Store ID
+                                </Button>
                             </div>
                             {
                                 dataStoreId &&
@@ -395,19 +527,47 @@ export default function Home() {
                                 </div>
                             }
                         </div>
-                        </>
                     }
                     {
                         modelStoreId && dataStoreId &&
-                        <Button className="py-[28px] px-[80px]" color="primary" onClick={handleGetComputeQuoteSubmit}>
-                            Compute
-                        </Button>
+                        <div className="compute-btn-group flex flex-rol gap-x-4 border-t border-t-white pt-[20px]">
+                            <Button className="py-6 px-[80px]" color="primary" onClick={handleGetComputeQuoteSubmit}>
+                                Compute
+                            </Button>
+                            {
+                                computeQuote &&
+                                <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={compute} isLoading={loadingComputePayment}>
+                                    Confirm computation
+                                </Button>
+                            }
+                        </div>
                     }
                     {
-                        computeQuote &&
-                        <Button className="py-6 px-[20px] max-w-[400px]" color="primary" onClick={compute}>
-                            Confirm computation
-                        </Button>
+                        trendValues &&
+                        <div className="form-container flex flex-col gap-y-4 mt-[20px] border-t border-t-white pt-[20px]">
+                            <label className="text-3xl font-bold">Result ETH Price Trend Prediction:</label>
+                            <div className="text-white text-lg font-medium">
+                                {
+                                    trendValues.filter((value, index) => {
+                                        const currentHour = moment().hour();
+                                        if (currentHour === 23)
+                                            return true;
+
+                                        return index >= currentHour;
+                                    }).map((value, index) => {
+
+                                        const currentHour = moment().hour() >= 23 ? 0 : moment().hour();
+
+                                        return (
+                                            <div key={index}>
+                                                Price trend at {parseInt(`${currentHour}`) + index}h: {Math.round(value * 100) / 100} USDT
+                                            </div>
+                                        )
+
+                                    })
+                                }
+                            </div>
+                        </div>
                     }
                 </div>
             </div>

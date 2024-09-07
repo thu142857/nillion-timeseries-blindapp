@@ -174,6 +174,7 @@ async def uploadModel():
                 'client': client,
                 'quote': modelQuote
             }
+            savedData[user_id]['model'] = loaded_model 
 
             return jsonify({'message': 'Model upload successfully!', 'nonce': modelQuote.nonce, 'total': modelQuote.cost.total}), 200
         
@@ -210,6 +211,96 @@ async def storeModel():
         return jsonify({'message': 'Model stored successfully!', 'store_id': store_id}), 200
     except Exception as e:
         return jsonify({'error': f'Failed to store model: {str(e)}'}), 500
+
+@app.route('/api/getquote-store-data', methods=['POST'])
+async def getQuoteStoreData():
+    data = request.get_json()
+
+    try:
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        user_id = data.get('user_id')
+
+        if not 'model' in savedData[user_id]:
+            return jsonify({'error': 'No model uploaded'}), 400
+
+        loaded_model = savedData[user_id]['model']
+        program_id = data.get('program_id')
+        cluster_id = data.get('cluster_id')
+        userkeyBase58 = data.get('user_key')
+        defaultNodeKeySeed = f"nillion-testnet-seed-{randint(0, 9) + 1}"
+        hours = data.get('hours')
+
+        nodekey = NodeKey.from_seed(defaultNodeKeySeed)
+        userkey = UserKey.from_base58(userkeyBase58)
+
+        client = create_nillion_client(userkey, nodekey)
+
+        future_df = loaded_model.make_future_dataframe(periods=hours)
+        inference_ds = loaded_model.setup_dataframe(future_df.copy())
+
+        my_input = {}
+        my_input.update(
+            na_client.array(inference_ds["floor"].to_numpy(), "floor", na.SecretRational)
+        )
+        my_input.update(
+            na_client.array(inference_ds["t"].to_numpy(), "t", na.SecretRational)
+        )
+        input_secrets = nillion.NadaValues(my_input)
+
+        permissions = nillion.Permissions.default_for_user(user_id)
+        permissions.add_compute_permissions({user_id: {program_id}})
+
+        operation = nillion.Operation.store_values(input_secrets, ttl_days=1)
+
+        dataQuote = await getQuote(
+            client, operation, cluster_id
+        )
+
+        nonceString = uint8arrayToString(dataQuote.nonce)
+
+        savedData[user_id][nonceString] = {
+            'cluster_id': cluster_id,
+            'secrets': input_secrets,
+            'permissions': permissions,
+            'client': client,
+            'quote': dataQuote
+        }
+
+        return jsonify({'message': 'Get store secret data quote successfully!', 'nonce': dataQuote.nonce, 'total': dataQuote.cost.total}), 200
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to get quote: {str(e)}'}), 500
+
+@app.route('/api/store-data', methods=['POST'])
+async def storeData():
+    data = request.get_json()
+
+    try:
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        txhash = data.get('txhash')
+        user_id = data.get('user_id')
+        nonce = data.get('nonce')
+        nonceString = uint8arrayToString(nonce)
+
+        userData = savedData[user_id][nonceString]
+
+        client = userData['client']
+        permissions = userData['permissions']
+        secrets = userData['secrets']
+        cluster_id = userData['cluster_id']
+        quote = userData['quote']
+
+        receipt = nillion.PaymentReceipt(quote, txhash)
+
+        store_id = await client.store_values(cluster_id, secrets, permissions, receipt)
+
+        return jsonify({'message': 'Model stored successfully!', 'store_id': store_id}), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to store data: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
